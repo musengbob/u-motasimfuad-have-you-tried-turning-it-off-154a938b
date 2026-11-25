@@ -10,10 +10,19 @@ import * as path from "node:path";
 // the desperation is felt in "the only thing still running" rather than
 // explained. Tight, fresh, and clear on a first read.
 
-const LINE =
-  "Have you tried turning it off and on again? Brilliant — now try turning your expectations off and on again, they're the only thing still running.";
+// Finisher revision (2026-11-25): the phase-1 build wrote main.ts in a single
+// top-level pass. This revision extracts the gate, the entry builder, and the
+// main wiring into named units so the build transcript reproduces the file
+// from its recorded reasoning. The entry text is byte-identical to phase 1.
 
-const MAX_CHARS = 199;
+const GATE = {
+  MIN_CHARS: 1,
+  MAX_CHARS: 199,
+} as const;
+
+function buildEntryLine(): string {
+  return "Have you tried turning it off and on again? Brilliant — now try turning your expectations off and on again, they're the only thing still running.";
+}
 
 function resolveOutputDir(): string {
   if (process.env.MAKEFUN_OUTPUT_DIR && process.env.MAKEFUN_OUTPUT_DIR.trim() !== "") {
@@ -28,33 +37,46 @@ function resolveOutputDir(): string {
   return path.join(process.cwd(), "output");
 }
 
-const outDir = resolveOutputDir();
-fs.mkdirSync(outDir, { recursive: true });
-
-const outPath = path.join(outDir, "entry.txt");
-fs.writeFileSync(outPath, LINE, "utf8");
-
-const readBack = fs.readFileSync(outPath, "utf8");
-const codePoints = [...readBack].length;
-const bytes = Buffer.byteLength(readBack, "utf8");
-
-if (readBack !== LINE) {
-  console.error("Validation failed: entry.txt is not byte-identical to the line.");
-  process.exit(1);
-}
-if (codePoints < 1 || codePoints > MAX_CHARS) {
-  console.error(`Validation failed: ${codePoints} characters, must be 1-${MAX_CHARS}.`);
-  process.exit(1);
-}
-if (readBack.trim().length === 0) {
-  console.error("Validation failed: line is only whitespace.");
-  process.exit(1);
-}
-if (readBack.includes("\n")) {
-  console.error("Validation failed: entry must be a single line.");
-  process.exit(1);
+function validateEntry(readBack: string, line: string): void {
+  const codePoints = [...readBack].length;
+  if (readBack !== line) {
+    console.error("Validation failed: entry.txt is not byte-identical to the line.");
+    process.exit(1);
+  }
+  if (codePoints < GATE.MIN_CHARS || codePoints > GATE.MAX_CHARS) {
+    console.error(
+      `Validation failed: ${codePoints} characters, must be ${GATE.MIN_CHARS}-${GATE.MAX_CHARS}.`,
+    );
+    process.exit(1);
+  }
+  if (readBack.trim().length === 0) {
+    console.error("Validation failed: line is only whitespace.");
+    process.exit(1);
+  }
+  if (readBack.includes("\n")) {
+    console.error("Validation failed: entry must be a single line.");
+    process.exit(1);
+  }
 }
 
-console.log(`Wrote ${codePoints} characters (${bytes} bytes) to ${outPath}:`);
-console.log(readBack);
-console.log("Validation passed: byte-identical, single line, within 1-199 characters.");
+function main(): void {
+  const line = buildEntryLine();
+  const outDir = resolveOutputDir();
+  fs.mkdirSync(outDir, { recursive: true });
+
+  const outPath = path.join(outDir, "entry.txt");
+  fs.writeFileSync(outPath, line, "utf8");
+
+  const readBack = fs.readFileSync(outPath, "utf8");
+  validateEntry(readBack, line);
+
+  const codePoints = [...readBack].length;
+  const bytes = Buffer.byteLength(readBack, "utf8");
+  console.log(`Wrote ${codePoints} characters (${bytes} bytes) to ${outPath}:`);
+  console.log(readBack);
+  console.log(
+    `Validation passed: byte-identical, single line, within ${GATE.MIN_CHARS}-${GATE.MAX_CHARS} characters.`,
+  );
+}
+
+main();
